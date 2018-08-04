@@ -1,12 +1,10 @@
 # coding:utf-8
-import csv
-import time
+# encoding=utf8
 
 import pandas as pd
 from bs4 import BeautifulSoup
 import urllib
-
-from spider_category import get_category
+from urllib.parse import quote
 
 
 def get_html_nologin(url):
@@ -26,7 +24,7 @@ def get_html(url):
         # 'Referer': 'http://www.xty999.com/index.html',
         # 'Accept-Encoding': 'gzip, deflate',
         # 'Accept-Language': 'zh-CN,zh;q=0.9',
-        'Cookie': cookies,
+        # 'Cookie': cookies,
     }
     request = urllib.request.Request(url=url, headers=headers)
     page = urllib.request.urlopen(request)  # 打开网页
@@ -34,81 +32,71 @@ def get_html(url):
 
 
 def write_csv(list):
-    columns = ['一级分类', '二级分类', '药品名', '产品规格', '生产厂家', '零售参考价', '采购价']
+    columns = ['分类', '药品名', '产品规格', '生产厂家', '零售参考价', '采购价']
     csvfile = pd.DataFrame(columns=columns, data=list)  # 打开方式还可以使用file对象
-    csvfile.to_csv('云药库.csv', index=False, encoding='GBK')
+    csvfile.to_csv('九州通.csv', index=False, encoding='GBK')
 
 
 def get_total_page(url):
     html = get_html_nologin(url)
     # html = get_html('http://127.0.0.1:5500/html/index.html')
     soup = BeautifulSoup(html, "html.parser")
-    div = soup.find('div', {'class': 's-pager'})
-    if div is None:
-        return 0
-    span_array = div.findAll('span')
-    span = span_array[1].text
-    span = span[1:len(span)]
-    span = span[:-1]
-    return span
+    span = soup.find('span', {'class': 'pagination-info'})
+    return span.text[2:][:-1]
 
 
 def get_spider(url, list, category):
     html = get_html(url)
     soup = BeautifulSoup(html, "html.parser")
-    ul = soup.find('ul', {'class': 'itemlist'})
+    ul = soup.find('ul', {'class': 'm_search_lst f_cbli'})
     for i in ul.children:
-        dic = [category[0], category[1]]
+        dic = [category, '药品名', '产品规格', '生产厂家', '零售参考价', '采购价']
         # 药品名
         try:
             if i != '\n':
                 # 药品名
-                h3 = i.find('h3')
-                dic.append(h3.a.text)
-                ##
-                ul_array = i.findAll('ul')
-                if ul_array[0].text == '\n':
-                    del ul_array[0];
-                li = ul_array[0].findAll('li')
-                # 产品规格
-                if len(li) >= 4:
-                    dic.append(li[3].text[5:])
-                else:
-                    dic.append('')
+                a = i.find('a', {'class': 'u_goods_tit'})
+                a_text = a.text
+                a_text = a_text.split( )
+                dic[1] = a_text[1]
+                dic[2] = a_text[2][1:]
                 # 生产厂家
-                if len(li) >= 3:
-                    dic.append(li[2].text[5:])
-                else:
-                    dic.append('')
+                p = i.find('p', {'class': 'u_goods_com'})
+                dic[3] = p['title']
                 # 零售价
-                li = ul_array[2].findAll('li')
-                dic.append(li[1].text[7:])
-                # 采购价
-                span = ul_array[3].find('span', {'class': 'info'})
-                if span is not None:
-                    dic.append(span.text)
+                span_suprice = i.find('span', {'class': 'u_goods_field u_goods_suprice'})
+                if span_suprice != None:
+                    dic[4] = span_suprice.text
                 else:
-                    dic.append('')
+                    dic[4] = ''
+                # 采购价
+                span_price = i.find('span', {'class': 'u_goods_pric'})
+                dic[5] = span_price.text
                 list.append(dic)
         except BaseException as e:
             print(page + e)
 
-
-category_array = get_category()
 records = []
+category_array = [
+    '感冒清热药物',
+    '营养保健品',
+    '外用药物',
+    '心脑血管药物',
+    '消化系统药物',
+    '中药材/中药饮片',
+    '补益安神药物',
+    '其它商品',
+]
 for category_index in range(len(category_array)):
-    # if category_index > 1:
+    # if category_index != 7:
     #     continue
     category = category_array[category_index]
-    # category = category_array[123]
-    href = category[2]
-    url = 'http://www.xty999.com' + href
+    url = 'http://fds.yyjzt.com/search/merchandise.htm?classifyName=' + quote(category)
     total = get_total_page(url)
     total = int(total)
     for i in range(total):
-        # time.sleep(1)
         page = i + 1
-        url = 'http://www.xty999.com/productlist.ac?page=' + str(page)
+        url = 'http://fds.yyjzt.com/search/merchandise.htm?classifyName=' + quote(category) + '&page=' + str(page)
         get_spider(url, records, category)
-    print('{0}/{1}'.format(category_index + 1, len(category_array)))
+        print('{0}/{1} {2}/{3}'.format(category_index + 1, len(category_array), page, total))
 write_csv(records)
